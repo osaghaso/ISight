@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <title>ISight - Visual Assistant</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="ISight">
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        #captureBtn {
+            width: 100%;
+            height: 90vh;
+            font-size: 72px;
+            background: #fff;
+            border: none;
+            border-radius: 20px;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #captureBtn:active {
+            background: #ddd;
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Ready</div>
+    <button id="captureBtn">TAP ANYWHERE TO SEE</button>
+    <input type="file" id="camera" accept="image/*" capture="environment" style="display:none">
+
+    <script>
+        const btn = document.getElementById('captureBtn');
+        const camera = document.getElementById('camera');
+        const status = document.getElementById('status');
+
+        // Your OpenAI API key from the document
+        const API_KEY = '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';
+
+        // Vibrate when pressed (if supported)
+        btn.onclick = () => {
+            if (navigator.vibrate) {
+                navigator.vibrate(100);
+            }
+            status.textContent = 'Opening camera...';
+            camera.click();
+        };
+
+        camera.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            btn.textContent = "ANALYZING...";
+            status.textContent = 'Processing image...';
+
+            try {
+                const base64 = await toBase64(file);
+
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini",
+                        messages: [{
+                            role: "system",
+                            content: "You help blind users understand what's in front of them. Be concise but include critical safety info. Start with the most important thing. Speak naturally as if talking to a friend."
+                        }, {
+                            role: "user",
+                            content: [{
+                                type: "image_url",
+                                image_url: {url: base64}
+                            }, {
+                                type: "text",
+                                text: "What's in this image?"
+                            }]
+                        }],
+                        max_tokens: 150
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const description = data.choices[0].message.content;
+
+                status.textContent = 'Speaking...';
+                speak(description);
+
+            } catch (error) {
+                console.error('Error:', error);
+                status.textContent = 'Error occurred';
+                speak("Sorry, I couldn't analyze that image. Please try again.");
+            }
+
+            btn.textContent = "TAP ANYWHERE TO SEE";
+            status.textContent = 'Ready';
+        };
+
+        function speak(text) {
+            // Stop any current speech
+            speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.9; // Slightly slower for clarity
+            utterance.volume = 1.0;
+
+            // Use a clear voice if available
+            const voices = speechSynthesis.getVoices();
+            const preferredVoice = voices.find(voice =>
+                voice.lang.startsWith('en') && voice.name.includes('Google')
+            ) || voices.find(voice => voice.lang.startsWith('en'));
+
+            if (preferredVoice) {
+                utterance.voice = preferredVoice;
+            }
+
+            speechSynthesis.speak(utterance);
+        }
+
+        function toBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Load voices when page loads
+        window.addEventListener('load', () => {
+            speechSynthesis.getVoices();
+            status.textContent = 'Ready - Tap the big button to start';
+
+            // Register service worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch((error) => {
+                        console.log('ServiceWorker registration failed');
+                    });
+            }
+        });
+
+        // Handle speech synthesis voices loading
+        speechSynthesis.onvoiceschanged = () => {
+            speechSynthesis.getVoices();
+        };
+
+        // Prevent zoom on double tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>
