@@ -41,10 +41,26 @@
             color: #fff;
             font-size: 16px;
         }
+        #testSpeechBtn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #testSpeechBtn:active {
+            background: #555;
+        }
     </style>
 </head>
 <body>
     <div id="status">Ready</div>
+    <button id="testSpeechBtn">Test Speech</button>
     <button id="captureBtn">TAP ANYWHERE TO SEE</button>
     <input type="file" id="camera" accept="image/*" capture="environment" style="display:none">
 
@@ -52,9 +68,15 @@
         const btn = document.getElementById('captureBtn');
         const camera = document.getElementById('camera');
         const status = document.getElementById('status');
+        const testSpeechBtn = document.getElementById('testSpeechBtn');
 
         // Your OpenAI API key from the document
         const API_KEY = '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';
+
+        // Test speech button
+        testSpeechBtn.onclick = () => {
+            speak("Speech test successful. Your audio is working properly.");
+        };
 
         // Vibrate when pressed (if supported)
         btn.onclick = () => {
@@ -121,24 +143,45 @@
         };
 
         function speak(text) {
+            console.log('Attempting to speak:', text);
+
             // Stop any current speech
             speechSynthesis.cancel();
 
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 0.9; // Slightly slower for clarity
+            utterance.rate = 0.9;
             utterance.volume = 1.0;
 
-            // Use a clear voice if available
-            const voices = speechSynthesis.getVoices();
-            const preferredVoice = voices.find(voice =>
-                voice.lang.startsWith('en') && voice.name.includes('Google')
-            ) || voices.find(voice => voice.lang.startsWith('en'));
+            // Wait for voices to load
+            const speakWithVoice = () => {
+                const voices = speechSynthesis.getVoices();
+                console.log('Available voices:', voices.length);
 
-            if (preferredVoice) {
-                utterance.voice = preferredVoice;
+                const preferredVoice = voices.find(voice =>
+                    voice.lang.startsWith('en') && voice.name.includes('Google')
+                ) || voices.find(voice => voice.lang.startsWith('en'));
+
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                    console.log('Using voice:', preferredVoice.name);
+                }
+
+                utterance.onstart = () => console.log('Speech started');
+                utterance.onend = () => console.log('Speech ended');
+                utterance.onerror = (e) => {
+                    console.error('Speech error:', e);
+                    // Fallback: show text on screen if speech fails
+                    alert(text);
+                };
+
+                speechSynthesis.speak(utterance);
+            };
+
+            if (speechSynthesis.getVoices().length > 0) {
+                speakWithVoice();
+            } else {
+                speechSynthesis.onvoiceschanged = speakWithVoice;
             }
-
-            speechSynthesis.speak(utterance);
         }
 
         function toBase64(file) {
